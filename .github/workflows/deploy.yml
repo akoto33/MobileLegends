@@ -36,6 +36,9 @@ jobs:
       - name: Build
         run: npm run build
 
+      # creates the Pages site on the first run if the repo has none yet
+      - uses: actions/configure-pages@v5
+
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
