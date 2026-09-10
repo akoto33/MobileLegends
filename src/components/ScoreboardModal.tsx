@@ -1,4 +1,5 @@
 import { GameEngine } from '../engine/GameEngine';
+import { asset } from '../assets';
 import { X, Swords, Coins, Users } from 'lucide-react';
 
 interface Props {
@@ -58,7 +59,7 @@ export const ScoreboardModal: React.FC<Props> = ({ engine, open, onClose }) => {
                     <tr key={h.uid} className={`${h.isPlayer ? 'bg-amber-400/10' : ''} ${h.dead ? 'opacity-55' : ''}`}>
                       <td className="border-b border-slate-800/70 px-1 py-1">
                         <div className="flex items-center gap-1.5">
-                          <img src={h.portrait} alt="" className="h-6 w-6 rounded border border-slate-700 object-cover" onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }} />
+                          <img src={asset(h.portrait)} alt="" className="h-6 w-6 rounded border border-slate-700 object-cover" onError={e => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }} />
                           <div className="min-w-0">
                             <div className="truncate font-bold text-slate-100">
                               {h.name}{h.isPlayer && <span className="ml-1 rounded bg-amber-400 px-1 text-[8px] font-black text-slate-950">YOU</span>}
