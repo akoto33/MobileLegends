@@ -1,354 +1,252 @@
-import React, { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { HEROES } from '../data/heroes';
 import { BATTLE_SPELLS } from '../data/spells';
-import { HeroDef, Role, BattleSpell } from '../types/game';
-import {
-  Shield,
-  Sword,
-  Sparkles,
-  Crosshair,
-  Zap,
-  Info,
-  CheckCircle,
-  Play
-} from 'lucide-react';
+import { HeroDef, LaneRole, Role } from '../types/game';
 import { soundManager } from '../audio/soundManager';
+import {
+  Swords, Shield, Sparkles, Crosshair, Zap, Play, Info, Crown, Check
+} from 'lucide-react';
 
-interface HeroSelectModalProps {
-  onStartMatch: (selectedHero: HeroDef, selectedSpell: string, botDifficulty: 'easy' | 'normal' | 'mythic') => void;
+type Difficulty = 'easy' | 'normal' | 'mythic';
+
+interface Props {
+  heroes: HeroDef[];
+  difficulty: Difficulty;
+  onDifficulty: (d: Difficulty) => void;
+  onStart: (hero: HeroDef, spellId: string, lane: LaneRole, diff: Difficulty) => void;
 }
 
-export const HeroSelectModal: React.FC<HeroSelectModalProps> = ({ onStartMatch }) => {
-  const [selectedHero, setSelectedHero] = useState<HeroDef>(HEROES[0]); // Default Layla
-  const [selectedSpell, setSelectedSpell] = useState<BattleSpell>(BATTLE_SPELLS[0]); // Default Flicker
-  const [selectedRole, setSelectedRole] = useState<Role | 'All'>('All');
-  const [botDifficulty, setBotDifficulty] = useState<'easy' | 'normal' | 'mythic'>('normal');
-  const [activeTab, setActiveTab] = useState<'skills' | 'stats'>('skills');
+const LANES: { id: LaneRole; label: string; hint: string }[] = [
+  { id: 'gold', label: 'GOLD LANE', hint: 'Marksman farm, safe side, Turtle nearby' },
+  { id: 'mid', label: 'MID LANE', hint: 'Mage burst, rotate to both sides' },
+  { id: 'exp', label: 'EXP LANE', hint: 'Fighter solo duel, Lord nearby' },
+  { id: 'jungle', label: 'JUNGLE', hint: 'Farm camps, gank lanes, take buffs' },
+  { id: 'roam', label: 'ROAM', hint: 'Support: ward, engage, protect the carry' }
+];
 
-  const filteredHeroes = selectedRole === 'All'
-    ? HEROES
-    : HEROES.filter(h => h.role === selectedRole);
+const roleIcon = (r: Role) => {
+  switch (r) {
+    case 'Tank': return <Shield className="h-3.5 w-3.5 text-sky-400" />;
+    case 'Fighter': return <Swords className="h-3.5 w-3.5 text-orange-400" />;
+    case 'Assassin': return <Zap className="h-3.5 w-3.5 text-fuchsia-400" />;
+    case 'Mage': return <Sparkles className="h-3.5 w-3.5 text-cyan-300" />;
+    case 'Marksman': return <Crosshair className="h-3.5 w-3.5 text-amber-300" />;
+    default: return <Info className="h-3.5 w-3.5 text-emerald-400" />;
+  }
+};
 
-  const handleHeroSelect = (hero: HeroDef) => {
-    setSelectedHero(hero);
+export const HeroSelectModal: React.FC<Props> = ({ difficulty, onDifficulty, onStart }) => {
+  const diff = difficulty;
+  const [hero, setHero] = useState<HeroDef>(HEROES.find(h => h.id === 'layla') ?? HEROES[0]);
+  const [spell, setSpell] = useState(BATTLE_SPELLS[0].id);
+  const [lane, setLane] = useState<LaneRole>(hero.laneSuggestion);
+  const [filter, setFilter] = useState<Role | 'All'>('All');
+
+  const list = filter === 'All' ? HEROES : HEROES.filter(h => h.role === filter);
+
+  // preview draft: your team vs theirs
+  const draft = useMemo(() => {
+    const rest = HEROES.filter(h => h.id !== hero.id);
+    const shuffled = [...rest].sort(() => Math.random() - 0.5);
+    return { allies: shuffled.slice(0, 4), foes: shuffled.slice(4, 9) };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hero.id]);
+
+  const pick = (h: HeroDef) => {
+    setHero(h);
+    setLane(h.laneSuggestion);
     soundManager.playAttackSound('slash');
   };
 
-  const handleLockIn = () => {
-    soundManager.playLevelUp();
+  const lockIn = () => {
     soundManager.announce('Welcome to Mobile Legends');
-    onStartMatch(selectedHero, selectedSpell.id, botDifficulty);
-  };
-
-  const getRoleIcon = (role: Role) => {
-    switch (role) {
-      case 'Tank': return <Shield className="w-3.5 h-3.5 text-blue-400" />;
-      case 'Fighter': return <Sword className="w-3.5 h-3.5 text-orange-400" />;
-      case 'Assassin': return <Zap className="w-3.5 h-3.5 text-purple-400" />;
-      case 'Mage': return <Sparkles className="w-3.5 h-3.5 text-cyan-400" />;
-      case 'Marksman': return <Crosshair className="w-3.5 h-3.5 text-yellow-400" />;
-      case 'Support': return <Info className="w-3.5 h-3.5 text-green-400" />;
-    }
+    onStart(hero, spell, lane, diff);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/95 p-3 md:p-6 overflow-y-auto">
-      <div className="w-full max-w-6xl bg-gradient-to-b from-slate-900 to-slate-950 border border-blue-900/40 rounded-2xl shadow-2xl flex flex-col max-h-[95vh] overflow-hidden">
-        {/* Header Bar */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-blue-900/30 bg-slate-900/60">
+    <div className="absolute inset-0 z-40 overflow-y-auto bg-[radial-gradient(ellipse_at_top,#10233f_0%,#05070d_60%)] p-3">
+      <div className="mx-auto max-w-[1180px]">
+        {/* header */}
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-gradient-to-tr from-amber-500 to-yellow-300 flex items-center justify-center font-bold text-slate-950 text-xl shadow-lg shadow-amber-500/20 font-teko">
-              ML
+            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-300 text-2xl font-black text-slate-950 shadow-lg shadow-amber-500/25 font-teko">
+              M
             </div>
             <div>
-              <h1 className="text-xl md:text-2xl font-bold tracking-wider text-transparent bg-clip-text bg-gradient-to-r from-amber-400 via-yellow-200 to-blue-400 font-teko uppercase">
-                Mobile Legends: Bang Bang
+              <h1 className="bg-gradient-to-r from-amber-300 via-yellow-100 to-sky-300 bg-clip-text text-2xl font-bold uppercase tracking-wider text-transparent font-teko md:text-3xl">
+                Mobile Legends · Web Arena
               </h1>
-              <p className="text-xs text-slate-400">Classic 5v5 Arena — Hero Selection</p>
+              <p className="text-[11px] uppercase tracking-widest text-slate-400">Classic 5v5 · pick a hero, a battle spell and a lane</p>
             </div>
           </div>
-
-          {/* Bot Difficulty Settings */}
-          <div className="flex items-center gap-2 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60">
-            <span className="text-xs text-slate-400 px-2 font-medium">Bot AI:</span>
-            {(['easy', 'normal', 'mythic'] as const).map(diff => (
+          <div className="flex items-center gap-1 rounded-xl border border-slate-700 bg-slate-900/70 p-1">
+            <span className="px-2 text-[11px] font-semibold text-slate-400">BOT AI</span>
+            {(['easy', 'normal', 'mythic'] as Difficulty[]).map(d => (
               <button
-                key={diff}
-                onClick={() => setBotDifficulty(diff)}
-                className={`text-xs px-2.5 py-1 rounded font-semibold transition-all capitalize ${
-                  botDifficulty === diff
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30'
-                    : 'text-slate-400 hover:text-white'
-                }`}
+                key={d}
+                onClick={() => onDifficulty(d)}
+                className={`rounded-lg px-3 py-1 text-xs font-bold uppercase tracking-wide transition ${d === diff ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
               >
-                {diff === 'mythic' ? '🔥 Mythic' : diff}
+                {d === 'mythic' ? '🔥 Mythic' : d}
               </button>
             ))}
           </div>
         </div>
 
-        {/* Content Body */}
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-12 overflow-hidden min-h-0">
-          {/* Left Column: Heroes Grid & Filters */}
-          <div className="lg:col-span-7 p-4 md:p-6 flex flex-col overflow-y-auto border-r border-blue-900/20">
-            {/* Role Filter Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-3 mb-4 scrollbar-none">
-              {(['All', 'Marksman', 'Mage', 'Assassin', 'Fighter', 'Tank'] as const).map(role => (
+        <div className="grid gap-3 lg:grid-cols-[1fr_330px]">
+          {/* ---------- hero grid ---------- */}
+          <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+            <div className="mb-2 flex flex-wrap gap-1">
+              {(['All', 'Marksman', 'Mage', 'Fighter', 'Assassin', 'Tank', 'Support'] as const).map(r => (
                 <button
-                  key={role}
-                  onClick={() => setSelectedRole(role as any)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-                    selectedRole === role
-                      ? 'bg-amber-500 text-slate-950 font-bold shadow-md shadow-amber-500/20'
-                      : 'bg-slate-800/60 text-slate-300 hover:bg-slate-800 border border-slate-700/50'
-                  }`}
+                  key={r}
+                  onClick={() => setFilter(r as any)}
+                  className={`rounded-md border px-2.5 py-1 text-[11px] font-bold uppercase ${filter === r ? 'border-amber-400/70 bg-amber-400/15 text-amber-200' : 'border-slate-700 bg-slate-900/60 text-slate-400 hover:text-white'}`}
                 >
-                  {role !== 'All' && getRoleIcon(role as Role)}
-                  {role}
+                  {r}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {list.map(h => (
+                <button
+                  key={h.id}
+                  onClick={() => pick(h)}
+                  className={`group relative overflow-hidden rounded-xl border-2 text-left transition-all active:scale-[0.98] ${hero.id === h.id ? 'border-amber-400 shadow-lg shadow-amber-500/20' : 'border-slate-800 hover:border-slate-500'}`}
+                >
+                  <img src={h.portrait} alt={h.name} className="h-24 w-full object-cover opacity-85 transition group-hover:scale-105 group-hover:opacity-100" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent px-2 pb-1 pt-5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold leading-none text-white">{h.name}</span>
+                      {roleIcon(h.role)}
+                    </div>
+                    <span className="text-[9px] uppercase tracking-wide text-slate-400">{h.title}</span>
+                  </div>
+                  {hero.id === h.id && (
+                    <span className="absolute right-1 top-1 rounded-full bg-amber-400 p-0.5 text-slate-950"><Check className="h-3 w-3" /></span>
+                  )}
                 </button>
               ))}
             </div>
 
-            {/* 10 Heroes Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-              {filteredHeroes.map(hero => {
-                const isSelected = selectedHero.id === hero.id;
-                return (
-                  <div
-                    key={hero.id}
-                    onClick={() => handleHeroSelect(hero)}
-                    className={`group relative rounded-xl overflow-hidden cursor-pointer border-2 transition-all duration-200 transform hover:scale-[1.02] ${
-                      isSelected
-                        ? 'border-amber-400 shadow-lg shadow-amber-500/25 ring-2 ring-amber-400/40'
-                        : 'border-slate-800 hover:border-blue-500/50 bg-slate-900'
-                    }`}
+            {/* lane picker */}
+            <div className="mt-3">
+              <div className="mb-1 text-[11px] font-bold uppercase tracking-widest text-slate-400">Choose your lane</div>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
+                {LANES.map(l => (
+                  <button
+                    key={l.id}
+                    onClick={() => setLane(l.id)}
+                    className={`rounded-lg border px-2 py-1.5 text-left transition ${lane === l.id ? 'border-sky-400 bg-sky-500/15' : 'border-slate-800 bg-slate-900/60 hover:border-slate-600'}`}
                   >
-                    {/* Hero Portrait */}
-                    <div className="aspect-[4/5] relative bg-slate-950 overflow-hidden">
-                      <img
-                        src={hero.portrait}
-                        alt={hero.name}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                        onError={(e) => {
-                          // Fallback styled gradient if image not found
-                          (e.currentTarget as HTMLElement).style.display = 'none';
-                        }}
-                      />
-                      {/* Role badge */}
-                      <div className="absolute top-1.5 left-1.5 px-2 py-0.5 rounded bg-slate-950/80 backdrop-blur-sm border border-slate-700/60 flex items-center gap-1 text-[10px] text-slate-200 font-medium">
-                        {getRoleIcon(hero.role)}
-                        {hero.role}
-                      </div>
-
-                      {/* Selected check */}
-                      {isSelected && (
-                        <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-amber-500 text-slate-950 flex items-center justify-center shadow-md">
-                          <CheckCircle className="w-3.5 h-3.5" />
-                        </div>
-                      )}
-
-                      {/* Bottom Info Gradient */}
-                      <div className="absolute inset-x-0 bottom-0 pt-8 pb-2 px-2 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent flex flex-col justify-end">
-                        <span className="font-bold text-sm text-slate-100 group-hover:text-amber-300 transition-colors">
-                          {hero.name}
-                        </span>
-                        <span className="text-[10px] text-slate-400 truncate">
-                          {hero.title}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                    <div className={`text-[11px] font-black uppercase ${lane === l.id ? 'text-sky-200' : 'text-slate-200'}`}>{l.label}</div>
+                    <div className="text-[9px] leading-tight text-slate-500">{l.hint}</div>
+                    {hero.lanes.includes(l.id) && <div className="mt-0.5 text-[9px] font-bold text-emerald-400">★ recommended</div>}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Battle Spell Selection */}
-            <div className="mt-5 pt-4 border-t border-slate-800">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">
-                  Battle Spell
-                </span>
-                <span className="text-[11px] text-amber-400 font-medium">
-                  {selectedSpell.name} (CD: {selectedSpell.cooldown}s)
-                </span>
+            {/* battle spells */}
+            <div className="mt-3">
+              <div className="mb-1 text-[11px] font-bold uppercase tracking-widest text-slate-400">Battle spell</div>
+              <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                {BATTLE_SPELLS.map(s => (
+                  <button
+                    key={s.id}
+                    onClick={() => setSpell(s.id)}
+                    className={`rounded-lg border px-2 py-1.5 text-left ${spell === s.id ? 'border-amber-400 bg-amber-400/10' : 'border-slate-800 bg-slate-900/60 hover:border-slate-600'}`}
+                  >
+                    <div className="text-[11px] font-bold text-slate-100">{s.name}</div>
+                    <div className="text-[9px] leading-tight text-slate-500 line-clamp-2">{s.description}</div>
+                    <div className="text-[9px] text-slate-600">CD {s.cooldown}s</div>
+                  </button>
+                ))}
               </div>
-              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                {BATTLE_SPELLS.map(spell => {
-                  const isSelected = selectedSpell.id === spell.id;
-                  return (
-                    <button
-                      key={spell.id}
-                      onClick={() => {
-                        setSelectedSpell(spell);
-                        soundManager.playAttackSound('magic');
-                      }}
-                      className={`relative p-2 rounded-lg flex flex-col items-center gap-1 border transition-all ${
-                        isSelected
-                          ? 'border-amber-400 bg-amber-500/10 shadow-md shadow-amber-500/20'
-                          : 'border-slate-800 bg-slate-900/60 hover:border-slate-700'
-                      }`}
-                      title={spell.description}
-                    >
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center ${isSelected ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300'}`}>
-                        <Zap className="w-4 h-4" />
-                      </div>
-                      <span className="text-[10px] font-medium text-slate-300 truncate w-full text-center">
-                        {spell.name}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="text-[11px] text-slate-400 mt-2 bg-slate-900/50 p-2 rounded border border-slate-800/80">
-                <strong className="text-amber-400">{selectedSpell.name}:</strong> {selectedSpell.description}
-              </p>
             </div>
           </div>
 
-          {/* Right Column: Hero Profile, Kit & Lock-in */}
-          <div className="lg:col-span-5 p-4 md:p-6 flex flex-col justify-between bg-slate-900/40 overflow-y-auto">
-            <div>
-              {/* Selected Hero Banner */}
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-amber-400 shadow-lg shadow-amber-500/20 flex-shrink-0 bg-slate-800">
-                  <img
-                    src={selectedHero.portrait}
-                    alt={selectedHero.name}
-                    className="w-full h-full object-cover"
-                  />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-2xl font-bold text-white tracking-wide font-teko">
-                      {selectedHero.name}
-                    </h2>
-                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                      {selectedHero.role}
-                    </span>
-                  </div>
-                  <p className="text-xs text-amber-400 font-medium">"{selectedHero.title}"</p>
+          {/* ---------- side panel ---------- */}
+          <div className="flex flex-col gap-3">
+            <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/70">
+              <div className="relative">
+                <img src={hero.portrait} alt={hero.name} className="h-40 w-full object-cover" onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 to-transparent p-2">
+                  <div className="text-xl font-black uppercase tracking-wide text-white font-teko">{hero.name}</div>
+                  <div className="text-[10px] uppercase tracking-widest text-amber-300">{hero.role} · {hero.title}</div>
                 </div>
               </div>
-
-              {/* Sub-tabs: Skills / Stats */}
-              <div className="flex border-b border-slate-800 mb-3">
-                <button
-                  onClick={() => setActiveTab('skills')}
-                  className={`pb-2 px-3 text-xs font-semibold transition-colors border-b-2 ${
-                    activeTab === 'skills'
-                      ? 'border-amber-400 text-amber-400'
-                      : 'border-transparent text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Skill Kit & Passive
-                </button>
-                <button
-                  onClick={() => setActiveTab('stats')}
-                  className={`pb-2 px-3 text-xs font-semibold transition-colors border-b-2 ${
-                    activeTab === 'stats'
-                      ? 'border-amber-400 text-amber-400'
-                      : 'border-transparent text-slate-400 hover:text-white'
-                  }`}
-                >
-                  Base Attributes
-                </button>
+              <div className="grid grid-cols-4 gap-1 p-2 text-center text-[10px]">
+                <Stat label="HP" v={hero.maxHp} />
+                <Stat label="ATK" v={hero.physAtk} />
+                <Stat label="DEF" v={hero.physDef} />
+                <Stat label="RNG" v={hero.attackRange} />
               </div>
-
-              {/* Skills Tab */}
-              {activeTab === 'skills' && (
-                <div className="space-y-2.5">
-                  {/* Passive */}
-                  <div className="p-2.5 rounded-lg bg-slate-900/70 border border-slate-800">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
-                        <span className="w-4 h-4 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center text-[10px] font-bold">P</span>
-                        {selectedHero.passive.name} (Passive)
+              <div className="space-y-1 px-2 pb-2">
+                {hero.skills.map((s, i) => (
+                  <div key={s.id} className="rounded-lg border border-slate-800 bg-slate-900/60 p-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-100">
+                        {i === 2 ? <Crown className="mr-1 inline h-3 w-3 text-amber-400" /> : `S${i + 1} `}{s.name}
                       </span>
+                      <span className="text-[9px] text-slate-500">{s.cooldown}s · {s.manaCost}mp</span>
                     </div>
-                    <p className="text-[11px] text-slate-300 leading-relaxed">
-                      {selectedHero.passive.description}
-                    </p>
+                    <p className="text-[10px] leading-tight text-slate-400">{s.description}</p>
                   </div>
-
-                  {/* Skills 1, 2, 3 */}
-                  {selectedHero.skills.map((skill, idx) => (
-                    <div
-                      key={skill.id}
-                      className={`p-2.5 rounded-lg border ${
-                        skill.isUltimate
-                          ? 'bg-amber-950/20 border-amber-600/30'
-                          : 'bg-slate-900/70 border-slate-800'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between mb-1">
-                        <span className={`text-xs font-bold flex items-center gap-1.5 ${skill.isUltimate ? 'text-amber-400' : 'text-blue-400'}`}>
-                          <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold ${
-                            skill.isUltimate ? 'bg-amber-500 text-slate-950' : 'bg-blue-500/20 text-blue-400'
-                          }`}>
-                            {idx + 1}
-                          </span>
-                          {skill.name} {skill.isUltimate && <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/20 text-amber-300">ULT</span>}
-                        </span>
-                        <div className="flex items-center gap-2 text-[10px] text-slate-400">
-                          <span>CD: {skill.cooldown}s</span>
-                          {skill.manaCost > 0 && <span>Mana: {skill.manaCost}</span>}
-                        </div>
-                      </div>
-                      <p className="text-[11px] text-slate-300 leading-relaxed">
-                        {skill.description}
-                      </p>
-                    </div>
-                  ))}
+                ))}
+                <div className="rounded-lg border border-emerald-800/60 bg-emerald-950/30 p-1.5">
+                  <div className="text-[11px] font-bold text-emerald-300">PASSIVE · {hero.passive.name}</div>
+                  <p className="text-[10px] leading-tight text-slate-400">{hero.passive.description}</p>
                 </div>
-              )}
-
-              {/* Stats Tab */}
-              {activeTab === 'stats' && (
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="p-2.5 rounded bg-slate-900/60 border border-slate-800">
-                    <span className="text-slate-400 text-[11px]">Max HP:</span>
-                    <p className="text-emerald-400 font-bold text-sm">{selectedHero.maxHp}</p>
-                  </div>
-                  <div className="p-2.5 rounded bg-slate-900/60 border border-slate-800">
-                    <span className="text-slate-400 text-[11px]">Physical Attack:</span>
-                    <p className="text-red-400 font-bold text-sm">{selectedHero.physAtk}</p>
-                  </div>
-                  <div className="p-2.5 rounded bg-slate-900/60 border border-slate-800">
-                    <span className="text-slate-400 text-[11px]">Physical Defense:</span>
-                    <p className="text-blue-400 font-bold text-sm">{selectedHero.physDef}</p>
-                  </div>
-                  <div className="p-2.5 rounded bg-slate-900/60 border border-slate-800">
-                    <span className="text-slate-400 text-[11px]">Magic Defense:</span>
-                    <p className="text-purple-400 font-bold text-sm">{selectedHero.magicDef}</p>
-                  </div>
-                  <div className="p-2.5 rounded bg-slate-900/60 border border-slate-800">
-                    <span className="text-slate-400 text-[11px]">Movement Speed:</span>
-                    <p className="text-yellow-400 font-bold text-sm">{selectedHero.moveSpeed}</p>
-                  </div>
-                  <div className="p-2.5 rounded bg-slate-900/60 border border-slate-800">
-                    <span className="text-slate-400 text-[11px]">Attack Range:</span>
-                    <p className="text-amber-400 font-bold text-sm">{selectedHero.attackRange}</p>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
 
-            {/* Lock In / Enter Match Button */}
-            <div className="mt-5 pt-4 border-t border-slate-800">
-              <button
-                onClick={handleLockIn}
-                className="w-full py-3.5 px-6 rounded-xl font-bold text-slate-950 bg-gradient-to-r from-amber-400 via-yellow-400 to-amber-500 hover:from-amber-300 hover:to-yellow-400 shadow-lg shadow-amber-500/30 transform active:scale-[0.99] transition-all flex items-center justify-center gap-2 text-base tracking-wider uppercase font-teko text-lg"
-              >
-                <Play className="w-5 h-5 fill-slate-950" />
-                LOCK IN & ENTER 5v5 ARENA
-              </button>
-              <p className="text-center text-[11px] text-slate-400 mt-2">
-                Bots will automatically fill remaining 4 allies and 5 opponents
-              </p>
+            <div className="rounded-2xl border border-slate-800 bg-slate-950/70 p-2">
+              <div className="mb-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-400">Draft</div>
+              <TeamRow title="YOUR TEAM" color="sky" names={[hero.name, ...draft.allies.map(a => a.name)]} />
+              <div className="my-1.5 h-px bg-slate-800" />
+              <TeamRow title="ENEMY TEAM" color="rose" names={draft.foes.map(a => a.name)} />
             </div>
+
+            <button
+              onClick={lockIn}
+              className="flex items-center justify-center gap-2 rounded-2xl border-2 border-amber-300 bg-gradient-to-b from-amber-400 to-amber-600 py-3 text-lg font-black uppercase tracking-widest text-slate-950 shadow-xl shadow-amber-500/25 transition hover:brightness-110 active:scale-[0.99] font-teko"
+            >
+              <Play className="h-5 w-5" /> Lock in · enter the arena
+            </button>
+            <p className="text-center text-[10px] leading-tight text-slate-500">
+              Controls: <b className="text-slate-300">WASD</b> move · <b className="text-slate-300">Space</b> attack · <b className="text-slate-300">Q/E/R</b> skills (drag to aim) · <b className="text-slate-300">F</b> spell · <b className="text-slate-300">P</b> shop · <b className="text-slate-300">Tab</b> score · <b className="text-slate-300">Enter</b> chat
+            </p>
           </div>
         </div>
       </div>
     </div>
   );
+
 };
+
+function Stat({ label, v }: { label: string; v: number }) {
+  return (
+    <div className="rounded-md border border-slate-800 bg-slate-900/70 py-1">
+      <div className="text-[9px] uppercase text-slate-500">{label}</div>
+      <div className="text-xs font-bold text-slate-100">{v}</div>
+    </div>
+  );
+}
+
+function TeamRow({ title, names, color }: { title: string; names: string[]; color: 'sky' | 'rose' }) {
+  return (
+    <div>
+      <div className={`text-[10px] font-black uppercase tracking-widest ${color === 'sky' ? 'text-sky-300' : 'text-rose-300'}`}>{title}</div>
+      <div className="mt-1 flex flex-wrap gap-1">
+        {names.map((n, i) => (
+          <span key={i} className={`rounded border px-1.5 py-0.5 text-[10px] font-semibold ${color === 'sky' ? 'border-sky-700/60 bg-sky-950/50 text-sky-200' : 'border-rose-700/60 bg-rose-950/50 text-rose-200'}`}>
+            {n}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default HeroSelectModal;

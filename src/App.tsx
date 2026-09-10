@@ -1,229 +1,363 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GameEngine } from './engine/GameEngine';
 import { GameRenderer } from './engine/GameRenderer';
-import { HeroDef, Team, GameAnnouncement } from './types/game';
+import { Announcement, HeroDef, LaneRole } from './types/game';
+
+import { HEROES } from './data/heroes';
 import { HeroSelectModal } from './components/HeroSelectModal';
 import { InGameHUD } from './components/InGameHUD';
-import { ShopModal } from './components/ShopModal';
-import { ScoreboardModal } from './components/ScoreboardModal';
 import { PostGameScreen } from './components/PostGameScreen';
+import { ScoreboardModal } from './components/ScoreboardModal';
+import { ShopModal } from './components/ShopModal';
 import { SettingsModal } from './components/SettingsModal';
 
-type GamePhase = 'hero-select' | 'in-game' | 'post-game';
+type Phase = 'hero-select' | 'in-game' | 'post-game';
+type Difficulty = 'easy' | 'normal' | 'mythic';
 
 export const App: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const [phase, setPhase] = useState<GamePhase>('hero-select');
-
-  // Engine & Renderer references
   const engineRef = useRef<GameEngine | null>(null);
-  const rendererRef = useRef<GameRenderer>(new GameRenderer());
+  const rendererRef = useRef<GameRenderer | null>(null);
+  if (!rendererRef.current) rendererRef.current = new GameRenderer();
 
-  // Match statistics for post-game
-  const [matchWinner, setMatchWinner] = useState<Team>('blue');
-  const [matchDuration, setMatchDuration] = useState<number>(0);
-  const [blueScore, setBlueScore] = useState<number>(0);
-  const [redScore, setRedScore] = useState<number>(0);
+  const [phase, setPhase] = useState<Phase>('hero-select');
+  const [difficulty, setDifficulty] = useState<Difficulty>('normal');
+  const [announcement, setAnnouncement] = useState<Announcement | null>(null);
+  const [shopOpen, setShopOpen] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const [, force] = useState(0);
+  const annTimer = useRef<number | null>(null);
+  const engineError = useRef<string | null>(null);
+  const lastPick = useRef<{ hero: HeroDef; spellId: string; lane: LaneRole; diff: Difficulty } | null>(null);
+  const heldKeys = useRef<Set<string>>(new Set());
+  const [chatSignal, setChatSignal] = useState(0);
 
-  // Modals state
-  const [isShopOpen, setIsShopOpen] = useState<boolean>(false);
-  const [isScoreboardOpen, setIsScoreboardOpen] = useState<boolean>(false);
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
-  const [botDifficulty, setBotDifficulty] = useState<'easy' | 'normal' | 'mythic'>('normal');
+  const rerender = useCallback(() => force(n => n + 1), []);
 
-  // Current announcement banner
-  const [currentAnnouncement, setCurrentAnnouncement] = useState<GameAnnouncement | null>(null);
-  const announcementTimeoutRef = useRef<number | null>(null);
+  const engine = engineRef.current;
 
-  // Force re-render state trigger
-  const [, setRenderTrigger] = useState(0);
-
-  // Start match handler
-  const handleStartMatch = (heroDef: HeroDef, spellId: string, difficulty: 'easy' | 'normal' | 'mythic') => {
-    setBotDifficulty(difficulty);
-
-    const engine = new GameEngine(heroDef, spellId, {
-      onAnnounce: (ann) => {
-        setCurrentAnnouncement(ann);
-        if (announcementTimeoutRef.current) {
-          clearTimeout(announcementTimeoutRef.current);
+  // --- build a match -------------------------------------------------------
+  const startMatch = (hero: HeroDef, spellId: string, lane: LaneRole, diff: Difficulty) => {
+    lastPick.current = { hero, spellId, lane, diff };
+    setDifficulty(diff);
+    const e = new GameEngine(hero.id, spellId, {
+      lane,
+      difficulty: diff,
+      listeners: {
+        onAnnounce: a => {
+          setAnnouncement(a);
+          if (annTimer.current) window.clearTimeout(annTimer.current);
+          annTimer.current = window.setTimeout(() => setAnnouncement(null), a.duration * 1000);
+        },
+        onGameOver: () => {
+          window.setTimeout(() => setPhase('post-game'), 1400);
         }
-        announcementTimeoutRef.current = window.setTimeout(() => {
-          setCurrentAnnouncement(null);
-        }, ann.duration * 1000);
-      },
-      onGameOver: (winner) => {
-        setMatchWinner(winner);
-        if (engineRef.current) {
-          setMatchDuration(engineRef.current.matchTime);
-          setBlueScore(engineRef.current.blueKills);
-          setRedScore(engineRef.current.redKills);
-        }
-        setPhase('post-game');
-      },
-      onUpdateHUD: () => {
-        setRenderTrigger(t => t + 1);
       }
     });
-
-    engine.botDifficulty = difficulty;
-    engineRef.current = engine;
+    engineRef.current = e;
+    // dev/QA handle: the live simulation is reachable from the console
+    (window as any).__ml = e;
+    setShopOpen(false);
+    setBoardOpen(false);
+    setAnnouncement(null);
     setPhase('in-game');
   };
 
-  // Play Again handler
-  const handlePlayAgain = () => {
+  const quitToLobby = () => {
     engineRef.current = null;
-    setIsShopOpen(false);
-    setIsScoreboardOpen(false);
-    setIsSettingsOpen(false);
-    setCurrentAnnouncement(null);
+    (window as any).__ml = null;
     setPhase('hero-select');
+    setShopOpen(false);
+    setBoardOpen(false);
+    setSettingsOpen(false);
+    setPaused(false);
   };
 
-  // Main 60 FPS Engine & Rendering Loop
-  const lastTimeRef = useRef<number>(performance.now());
-
-  const gameLoop = useCallback((timestamp: number) => {
-    const dt = Math.min(0.1, (timestamp - lastTimeRef.current) / 1000);
-    lastTimeRef.current = timestamp;
-
-    const engine = engineRef.current;
-    const canvas = canvasRef.current;
-
-    if (engine && canvas && phase === 'in-game') {
-      const ctx = canvas.getContext('2d');
-      if (ctx) {
-        // Update simulation
-        engine.update(dt);
-        // Render frame
-        rendererRef.current.render(ctx, engine, canvas.width, canvas.height);
+  // --- viewport ------------------------------------------------------------
+  useEffect(() => {
+    const resize = () => {
+      const cv = canvasRef.current;
+      if (!cv) return;
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      cv.width = Math.floor(window.innerWidth * dpr);
+      cv.height = Math.floor(window.innerHeight * dpr);
+      cv.style.width = `${window.innerWidth}px`;
+      cv.style.height = `${window.innerHeight}px`;
+      const e = engineRef.current;
+      if (e) {
+        e.camera.width = window.innerWidth;
+        e.camera.height = window.innerHeight;
+        e.camera.zoom = Math.max(0.55, Math.min(1.2, (window.innerHeight / 820) * dpr * 0.86));
       }
-    }
-
-    requestAnimationFrame(gameLoop);
+    };
+    resize();
+    window.addEventListener('resize', resize);
+    window.addEventListener('orientationchange', resize);
+    return () => {
+      window.removeEventListener('resize', resize);
+      window.removeEventListener('orientationchange', resize);
+    };
   }, [phase]);
 
+  // --- main loop -----------------------------------------------------------
   useEffect(() => {
-    const handleResize = () => {
-      if (canvasRef.current) {
-        canvasRef.current.width = window.innerWidth;
-        canvasRef.current.height = window.innerHeight;
-        if (engineRef.current) {
-          engineRef.current.camera.width = window.innerWidth;
-          engineRef.current.camera.height = window.innerHeight;
+    let raf = 0;
+    let last = performance.now();
+    let alive = true;
+    const loop = (t: number) => {
+      if (!alive) return;
+      raf = requestAnimationFrame(loop);
+      const dt = Math.min(0.08, (t - last) / 1000);
+      last = t;
+      const e = engineRef.current;
+      const cv = canvasRef.current;
+      if (!e || !cv || phase !== 'in-game') return;
+      const ctx = cv.getContext('2d');
+      if (!ctx) return;
+      try {
+        // keyboard movement wins over the joystick while keys are down
+        const keys = heldKeys.current;
+        if (keys.size) {
+          const dx = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
+          const dy = (keys.has('s') || keys.has('arrowdown') ? 1 : 0) - (keys.has('w') || keys.has('arrowup') ? 1 : 0);
+          if (dx || dy) {
+            const m = Math.hypot(dx, dy);
+            e.setMoveVector(dx / m, dy / m);
+          } else {
+            e.setMoveVector(0, 0);
+          }
+        }
+        if (!paused && !shopOpen && !boardOpen && !settingsOpen) e.update(dt);
+        rendererRef.current!.render(ctx, e, cv.width, cv.height, dt);
+      } catch (err: any) {
+        if (!engineError.current) {
+          engineError.current = err?.message ?? String(err);
+          // eslint-disable-next-line no-console
+          console.error('[game loop]', err);
+          rerender();
         }
       }
     };
-
-    handleResize();
-    window.addEventListener('resize', handleResize);
-    const animId = requestAnimationFrame(gameLoop);
-
+    raf = requestAnimationFrame(loop);
     return () => {
-      window.removeEventListener('resize', handleResize);
-      cancelAnimationFrame(animId);
+      alive = false;
+      cancelAnimationFrame(raf);
     };
-  }, [gameLoop]);
+  }, [phase, paused, shopOpen, boardOpen, settingsOpen, rerender]);
+
+  // --- keep the simulation's own pause flag honest --------------------------
+  useEffect(() => {
+    const e = engineRef.current;
+    if (!e || e.state === 'over') return;
+    const busy = paused || shopOpen || boardOpen || settingsOpen;
+    e.state = busy ? 'paused' : 'running';
+    if (busy) e.setMoveVector(0, 0);
+  }, [paused, shopOpen, boardOpen, settingsOpen]);
+
+  // --- keyboard ------------------------------------------------------------
+  useEffect(() => {
+    if (phase !== 'in-game') return;
+    const onKey = (ev: KeyboardEvent) => {
+      const e = engineRef.current;
+      if (!e) return;
+      const tag = (ev.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+      const k = ev.key.toLowerCase();
+      const p = e.player;
+      if (['w', 'a', 's', 'd', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) {
+        ev.preventDefault();
+        heldKeys.current.add(k);
+        return;
+      }
+      if (k === 'enter') {
+        ev.preventDefault();
+        setChatSignal(v => v + 1);
+        return;
+      }
+      switch (k) {
+        case ' ': ev.preventDefault(); e.commandAttackUid(0); p.runtime.priority = 'auto'; e.basicAttackNearest(p); break;
+        case 'q': e.castSkill(p, 0); break;
+        case 'e': e.castSkill(p, 1); break;
+        case 'r': e.castSkill(p, 2); break;
+        case 'f': e.castSpell(p); break;
+        case 'b': e.recall(p); break;
+        case 'g': e.toggleAutoAttack(); break;
+        case 'h': e.regen(p); break;
+        case '1': e.setPriority('hero'); break;
+        case '2': e.setPriority('minion'); break;
+        case '3': e.setPriority('turret'); break;
+        case '0': e.setPriority('auto'); break;
+        case 'p': case 'c': setShopOpen(v => !v); break;
+        case 'tab': ev.preventDefault(); setBoardOpen(v => !v); break;
+        case 'escape': setPaused(v => !v); break;
+        case 'y': e.sendQuickChat({ id: 'attack', label: 'Attack!', chat: 'Attack!', kind: 'attack' }); break;
+        case 't': e.sendQuickChat({ id: 'help', label: 'Need help!', chat: 'Need help!', kind: 'help' }); break;
+        case 'u': e.sendQuickChat({ id: 'retreat', label: 'Retreat!', chat: 'Retreat!', kind: 'retreat' }); break;
+        default: break;
+      }
+    };
+    const onUp = (ev: KeyboardEvent) => {
+      const k = ev.key.toLowerCase();
+      if (heldKeys.current.delete(k)) {
+        const e = engineRef.current;
+        if (e && !heldKeys.current.size) e.setMoveVector(0, 0);
+      }
+    };
+    const onBlurClear = () => {
+      heldKeys.current.clear();
+      engineRef.current?.setMoveVector(0, 0);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onUp);
+    window.addEventListener('blur', onBlurClear);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onUp);
+      window.removeEventListener('blur', onBlurClear);
+    };
+  }, [phase]);
+
+  useEffect(() => {
+    const onBlur = () => {
+      const e = engineRef.current;
+      if (e && phase === 'in-game' && e.state === 'running') setPaused(true);
+    };
+    window.addEventListener('blur', onBlur);
+    return () => window.removeEventListener('blur', onBlur);
+  }, [phase]);
+
+  // --- canvas pointer: click to move / attack, right click smart ---------
+  const onCanvasPointer = (ev: React.PointerEvent<HTMLCanvasElement>) => {
+    const e = engineRef.current;
+    const cv = canvasRef.current;
+    if (!e || !cv || phase !== 'in-game' || paused) return;
+    const rect = cv.getBoundingClientRect();
+    const dpr = cv.width / Math.max(1, rect.width);
+    const z = e.camera.zoom;
+    const wx = (ev.clientX - rect.left) * dpr / z - cv.width / 2 / z + e.camera.x;
+    const wy = (ev.clientY - rect.top) * dpr / z - cv.height / 2 / z + e.camera.y;
+
+    if (ev.button === 2) {
+      const foe = nearestEnemy(e, wx, wy, 60);
+      if (foe) e.commandAttackUid(foe.uid);
+      else e.commandMove(clampX(wx), clampY(wy));
+      return;
+    }
+    const foe = nearestEnemy(e, wx, wy, 46);
+    if (foe) e.commandAttackUid(foe.uid);
+    else e.commandMove(clampX(wx), clampY(wy));
+  };
+
+  const heroes = useMemo(() => HEROES, []);
 
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-slate-950 font-game">
-      {/* 2D Canvas Viewport */}
+    <div className="relative h-screen w-screen overflow-hidden bg-slate-950 font-game">
       <canvas
+        id="ml-game"
         ref={canvasRef}
-        onClick={(e) => {
-          const engine = engineRef.current;
-          const canvas = canvasRef.current;
-          if (!engine || !canvas || phase !== 'in-game') return;
-
-          const rect = canvas.getBoundingClientRect();
-          const clickX = e.clientX - rect.left;
-          const clickY = e.clientY - rect.top;
-
-          const worldX = clickX - canvas.width / 2 + engine.camera.x;
-          const worldY = clickY - canvas.height / 2 + engine.camera.y;
-
-          // Check if clicked on an enemy hero, minion, or turret
-          const player = engine.playerHero;
-          const clickedHero = engine.heroes.find(
-            h => h.team !== player.team && !h.isDead && Math.hypot(h.x - worldX, h.y - worldY) < 36
-          );
-
-          if (clickedHero) {
-            engine.performBasicAttack(player, clickedHero);
-            engine.addVisualEffect('ring', clickedHero.x, clickedHero.y, '#ef4444', 40, 0.3);
-          } else {
-            // Click to move
-            (player as any).targetDestination = { x: worldX, y: worldY };
-            engine.addVisualEffect('ring', worldX, worldY, '#38bdf8', 35, 0.3);
-          }
-        }}
-        className="block w-full h-full cursor-crosshair touch-none"
+        className="block h-full w-full touch-none select-none cursor-crosshair"
+        onPointerDown={onCanvasPointer}
+        onContextMenu={ev => ev.preventDefault()}
       />
 
-      {/* --- IN-GAME HUD --- */}
-      {phase === 'in-game' && engineRef.current && (
+      {phase === 'in-game' && engine && (
         <InGameHUD
-          engine={engineRef.current}
-          renderer={rendererRef.current}
-          onOpenShop={() => setIsShopOpen(true)}
-          onOpenScoreboard={() => setIsScoreboardOpen(true)}
-          onOpenSettings={() => setIsSettingsOpen(true)}
-          announcement={currentAnnouncement}
+          engine={engine}
+          renderer={rendererRef.current!}
+          paused={paused}
+          onResume={() => setPaused(false)}
+          onQuit={quitToLobby}
+          onOpenShop={() => setShopOpen(true)}
+          onOpenBoard={() => setBoardOpen(true)}
+          onOpenSettings={() => setSettingsOpen(true)}
+          announcement={announcement}
+          chatSignal={chatSignal}
+          onChatFocusChange={focused => {
+            const e = engineRef.current;
+            if (e && !focused) e.setMoveVector(0, 0);
+          }}
         />
       )}
 
-      {/* --- HERO SELECTION MODAL --- */}
       {phase === 'hero-select' && (
-        <HeroSelectModal onStartMatch={handleStartMatch} />
-      )}
-
-      {/* --- SHOP MODAL --- */}
-      {engineRef.current && (
-        <ShopModal
-          playerHero={engineRef.current.playerHero}
-          isOpen={isShopOpen}
-          onClose={() => setIsShopOpen(false)}
-          onItemPurchased={() => setRenderTrigger(t => t + 1)}
+        <HeroSelectModal
+          heroes={heroes}
+          difficulty={difficulty}
+          onDifficulty={d => { setDifficulty(d); if (engineRef.current) engineRef.current.difficulty = d; }}
+          onStart={startMatch}
         />
       )}
 
-      {/* --- SCOREBOARD MODAL --- */}
-      {engineRef.current && (
-        <ScoreboardModal
-          heroes={engineRef.current.heroes}
-          blueKills={engineRef.current.blueKills}
-          redKills={engineRef.current.redKills}
-          isOpen={isScoreboardOpen}
-          onClose={() => setIsScoreboardOpen(false)}
-        />
+      {phase === 'in-game' && engine && (
+        <>
+          <ShopModal hero={engine.player} open={shopOpen} onClose={() => setShopOpen(false)} engine={engine} />
+          <ScoreboardModal
+            engine={engine}
+            open={boardOpen}
+            onClose={() => setBoardOpen(false)}
+          />
+          <SettingsModal
+            open={settingsOpen}
+            onClose={() => setSettingsOpen(false)}
+            difficulty={difficulty}
+            onDifficulty={d => {
+              setDifficulty(d);
+              if (engineRef.current) engineRef.current.difficulty = d;
+            }}
+            paused={paused}
+            onPause={setPaused}
+          />
+        </>
       )}
 
-      {/* --- SETTINGS MODAL --- */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        botDifficulty={botDifficulty}
-        onDifficultyChange={(diff) => {
-          setBotDifficulty(diff);
-          if (engineRef.current) engineRef.current.botDifficulty = diff;
-        }}
-      />
-
-      {/* --- POST GAME SCREEN (VICTORY / DEFEAT) --- */}
-      {phase === 'post-game' && engineRef.current && (
+      {phase === 'post-game' && engine && (
         <PostGameScreen
-          winner={matchWinner}
-          playerHero={engineRef.current.playerHero}
-          heroes={engineRef.current.heroes}
-          matchDuration={matchDuration}
-          blueKills={blueScore}
-          redKills={redScore}
-          onPlayAgain={handlePlayAgain}
+          engine={engine}
+          onPlayAgain={() => {
+            const pick = lastPick.current;
+            if (pick) startMatch(pick.hero, pick.spellId, pick.lane, pick.diff);
+            else quitToLobby();
+          }}
+          onMenu={quitToLobby}
         />
       )}
     </div>
   );
 };
+
+function clampX(x: number) {
+  return Math.max(95, Math.min(2400 - 95, x));
+}
+function clampY(y: number) {
+  return Math.max(95, Math.min(2400 - 95, y));
+}
+
+function nearestEnemy(e: GameEngine, x: number, y: number, tol: number) {
+  let best: { uid: number } | null = null;
+  let bd = tol;
+  for (const h of e.heroes) {
+    if (h.team === e.player.team || h.dead) continue;
+    const d = Math.hypot(h.x - x, h.y - y);
+    if (d < bd) { bd = d; best = h; }
+  }
+  for (const m of e.minions) {
+    if (m.team === e.player.team || m.hp <= 0) continue;
+    const d = Math.hypot(m.x - x, m.y - y);
+    if (d < bd) { bd = d; best = m; }
+  }
+  for (const t of e.turrets) {
+    if (t.team === e.player.team || t.destroyed) continue;
+    const d = Math.hypot(t.x - x, t.y - y);
+    if (d < bd + 24) { bd = d; best = t; }
+  }
+  for (const mo of e.monsters) {
+    if (!mo.alive) continue;
+    const d = Math.hypot(mo.x - x, mo.y - y);
+    if (d < bd + 30) { bd = d; best = mo; }
+  }
+  return best;
+}
 
 export default App;

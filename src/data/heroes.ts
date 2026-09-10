@@ -20,6 +20,8 @@ export const HEROES: HeroDef[] = [
     attackSpeed: 1.1,
     moveSpeed: 240,
     attackRange: 270,
+    laneSuggestion: 'gold',
+    lanes: ['gold'],
     passive: {
       name: 'Malefic Gun',
       description: 'Damage increases with distance up to 135%. Range expands as skills level up.',
@@ -90,6 +92,8 @@ export const HEROES: HeroDef[] = [
     attackSpeed: 1.15,
     moveSpeed: 245,
     attackRange: 240,
+    laneSuggestion: 'gold',
+    lanes: ['gold'],
     passive: {
       name: 'Moon Blessing',
       description: 'Each basic attack increases Attack Speed by 5% (stacks up to 5 times) and summons a Moon Shadow.',
@@ -158,6 +162,8 @@ export const HEROES: HeroDef[] = [
     attackSpeed: 0.95,
     moveSpeed: 255,
     attackRange: 130,
+    laneSuggestion: 'roam',
+    lanes: ['roam', 'exp'],
     passive: {
       name: 'Fearless',
       description: 'Gains 1 stack of blessing when using skills or taking basic attacks. At 4 stacks, immunizes next basic attack.',
@@ -227,6 +233,8 @@ export const HEROES: HeroDef[] = [
     attackSpeed: 1.05,
     moveSpeed: 260,
     attackRange: 140,
+    laneSuggestion: 'exp',
+    lanes: ['exp', 'jungle'],
     passive: {
       name: 'Pursuit',
       description: 'After casting a skill, the next basic attack dashes to the target and deals extra 1.2x damage with 25% lifesteal.',
@@ -297,6 +305,8 @@ export const HEROES: HeroDef[] = [
     attackSpeed: 1.0,
     moveSpeed: 240,
     attackRange: 230,
+    laneSuggestion: 'mid',
+    lanes: ['mid'],
     passive: {
       name: 'Superconductor',
       description: 'Skills inflict Superconductor for 3s. Additional skills inflict special bonus effects and reduce magic defense.',
@@ -366,6 +376,8 @@ export const HEROES: HeroDef[] = [
     attackSpeed: 1.1,
     moveSpeed: 260,
     attackRange: 140,
+    laneSuggestion: 'jungle',
+    lanes: ['jungle', 'exp'],
     passive: {
       name: 'Enemy\'s Bane',
       description: 'Saber\'s attacks and skills shred the target\'s Physical Defense by 5 points per hit, stacking up to 5 times.',
@@ -433,6 +445,8 @@ export const HEROES: HeroDef[] = [
     attackSpeed: 1.15,
     moveSpeed: 265,
     attackRange: 150,
+    laneSuggestion: 'exp',
+    lanes: ['exp', 'jungle'],
     passive: {
       name: 'Dragon Flurry',
       description: 'Every 3 basic attacks, the next attack triggers a flurry of multi-thrust strikes that heal Zilong for 50% HP.',
@@ -500,6 +514,8 @@ export const HEROES: HeroDef[] = [
     attackSpeed: 1.0,
     moveSpeed: 245,
     attackRange: 240,
+    laneSuggestion: 'mid',
+    lanes: ['mid', 'roam'],
     passive: {
       name: 'Molina\'s Gift',
       description: 'Upon taking fatal damage, Nana transforms into Molina for 2s, becoming immune to all damage and gaining 70% Movement Speed.',
@@ -570,6 +586,8 @@ export const HEROES: HeroDef[] = [
     attackSpeed: 1.1,
     moveSpeed: 260,
     attackRange: 140,
+    laneSuggestion: 'mid',
+    lanes: ['mid', 'jungle'],
     passive: {
       name: 'Dagger Specialist',
       description: 'Each skill cast adds a rune to Gusion\'s dagger. After 3 runes, the next basic attack deals 15% missing HP as magic damage and heals.',
@@ -638,6 +656,8 @@ export const HEROES: HeroDef[] = [
     attackSpeed: 0.95,
     moveSpeed: 255,
     attackRange: 130,
+    laneSuggestion: 'roam',
+    lanes: ['roam', 'exp'],
     passive: {
       name: 'Wasteland Force',
       description: 'Increases Movement Speed by 10% and regenerates 1% max HP per second if no damage is taken within 5s.',
