@@ -10,6 +10,9 @@ const __dirname = path.dirname(__filename);
 
 // https://vite.dev/config/
 export default defineConfig({
+  // relative asset urls: the app is served from '/' in dev but from
+  // '/<repo>/' on GitHub Pages project sites
+  base: "./",
   plugins: [react(), tailwindcss(), viteSingleFile()],
   // allow the sandbox preview host (and any tunnel) to load the dev/preview server
   server: { host: "0.0.0.0", port: 5173, allowedHosts: [".e2b.app", ".localhost"] },

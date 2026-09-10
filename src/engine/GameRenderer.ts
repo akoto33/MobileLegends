@@ -8,6 +8,7 @@ import {
   BUSHES, CORES, FOUNTAINS, LANES, LANE_PATHS, MAP_H, MAP_W, WALLS, TURTLE_PIT, LORD_PIT
 } from './GameMap';
 import { Minion, Monster } from '../types/game';
+import { asset } from '../assets';
 
 const TERRAIN_SCALE = 0.5;
 
@@ -27,7 +28,7 @@ export class GameRenderer {
     const ids = ['layla', 'miya', 'tigreal', 'alucard', 'eudora', 'saber', 'zilong', 'nana', 'gusion', 'franco'];
     ids.forEach(id => {
       const img = new Image();
-      img.src = `/heroes/${id}.jpg`;
+      img.src = asset(`/heroes/${id}.jpg`);
       img.onload = () => this.images.set(id, img);
       img.onerror = () => { /* fallback badge is drawn instead */ };
       this.images.set(id, img);

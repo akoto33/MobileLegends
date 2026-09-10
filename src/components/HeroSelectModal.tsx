@@ -3,6 +3,7 @@ import { HEROES } from '../data/heroes';
 import { BATTLE_SPELLS } from '../data/spells';
 import { HeroDef, LaneRole, Role } from '../types/game';
 import { soundManager } from '../audio/soundManager';
+import { asset } from '../assets';
 import {
   Swords, Shield, Sparkles, Crosshair, Zap, Play, Info, Crown, Check
 } from 'lucide-react';
@@ -114,7 +115,7 @@ export const HeroSelectModal: React.FC<Props> = ({ difficulty, onDifficulty, onS
                   onClick={() => pick(h)}
                   className={`group relative overflow-hidden rounded-xl border-2 text-left transition-all active:scale-[0.98] ${hero.id === h.id ? 'border-amber-400 shadow-lg shadow-amber-500/20' : 'border-slate-800 hover:border-slate-500'}`}
                 >
-                  <img src={h.portrait} alt={h.name} className="h-24 w-full object-cover opacity-85 transition group-hover:scale-105 group-hover:opacity-100" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                  <img src={asset(h.portrait)} alt={h.name} className="h-24 w-full object-cover opacity-85 transition group-hover:scale-105 group-hover:opacity-100" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 via-slate-950/80 to-transparent px-2 pb-1 pt-5">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-bold leading-none text-white">{h.name}</span>
@@ -170,7 +171,7 @@ export const HeroSelectModal: React.FC<Props> = ({ difficulty, onDifficulty, onS
           <div className="flex flex-col gap-3">
             <div className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-950/70">
               <div className="relative">
-                <img src={hero.portrait} alt={hero.name} className="h-40 w-full object-cover" onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
+                <img src={asset(hero.portrait)} alt={hero.name} className="h-40 w-full object-cover" onError={e => { (e.target as HTMLImageElement).style.opacity = '0'; }} />
                 <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950 to-transparent p-2">
                   <div className="text-xl font-black uppercase tracking-wide text-white font-teko">{hero.name}</div>
                   <div className="text-[10px] uppercase tracking-widest text-amber-300">{hero.role} · {hero.title}</div>
